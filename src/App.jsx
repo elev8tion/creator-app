@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import Auth from "./Auth";
+import { getSession, signOut, fetchCreators, createCreator, updateCreator, deleteCreatorApi } from "./api";
 
 // ─── Responsive Hook ────────────────────────────────────────────────────────
 function useMediaQuery(query) {
@@ -117,7 +119,6 @@ function stageTheme(hex) {
 // ─── Constants ───────────────────────────────────────────────────────────────
 const STAGES = ["Discovered","Contacted","Responded","In Talks","Onboarded","Declined"];
 const PLATFORMS = ["Instagram","TikTok","YouTube","Twitter/X","LinkedIn","Twitch","Podcast","Blog","Other"];
-const STORAGE_KEY = "creator_pipeline_v2";
 
 const SC = {
   Discovered: stageTheme("#00D4FF"),
@@ -821,6 +822,7 @@ function Modal({ creator, onClose, onSave, onDelete, mob, toast }) {
 export default function App() {
   const mob = useMediaQuery("(max-width: 640px)");
   const tab = useMediaQuery("(max-width: 900px)");
+  const [user, setUser] = useState(undefined); // undefined=checking, null=logged out, object=logged in
   const [creators, setCreators] = useState([]);
   const [modal, setModal] = useState(null);
   const [stageFilter, setStageFilter] = useState("All");
@@ -828,14 +830,24 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("dateAdded");
   const [view, setView] = useState("list");
-  const [loaded, setLoaded] = useState(false);
   const { toasts, toast, dismiss } = useToasts();
   const searchRef = useRef(null);
 
-  useEffect(() => {
-    try { const d = localStorage.getItem(STORAGE_KEY); if (d) setCreators(JSON.parse(d)); } catch(_) {}
-    setLoaded(true);
+  // Check session + load creators on mount
+  const loadData = useCallback(async () => {
+    try {
+      const session = await getSession();
+      setUser(session);
+      if (session) {
+        const data = await fetchCreators();
+        setCreators(data);
+      }
+    } catch {
+      setUser(null);
+    }
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
     const handler = e => {
@@ -852,18 +864,63 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [modal]);
 
-  const persist = useCallback(data => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(_) {}
-  }, []);
-
-  const saveCreator = c => {
-    setCreators(prev => { const next = prev.find(x=>x.id===c.id) ? prev.map(x=>x.id===c.id?c:x) : [c,...prev]; persist(next); return next; });
-    setModal(null);
+  const handleSignOut = async () => {
+    await signOut();
+    setUser(null);
+    setCreators([]);
   };
-  const deleteCreator = id => { setCreators(prev => { const next = prev.filter(x=>x.id!==id); persist(next); return next; }); setModal(null); };
-  const changeStage = (id, status) => {
-    setCreators(prev => { const next = prev.map(x => x.id===id ? {...x, status, log:[{text:`Moved to ${status}`, date:now()}, ...(x.log||[])]} : x); persist(next); return next; });
+
+  // Auth gate — show login if not authenticated
+  if (user === undefined) return (
+    <div style={{ background: T.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <InjectedStyles />
+      <div style={{ color: T.textFaint, fontSize:14, ...mono, animation:"pulseOverdue 1.5s ease infinite" }}>LOADING…</div>
+    </div>
+  );
+  if (user === null) return (
+    <>
+      <InjectedStyles />
+      <Auth onAuth={loadData} />
+    </>
+  );
+
+  const saveCreator = async (c) => {
+    const isNew = !creators.find(x => x.id === c.id);
+    setCreators(prev => isNew ? [c, ...prev] : prev.map(x => x.id === c.id ? c : x));
+    setModal(null);
+    try {
+      if (isNew) {
+        const saved = await createCreator(c);
+        setCreators(prev => prev.map(x => x.id === c.id ? { ...c, id: saved.id } : x));
+      } else {
+        await updateCreator(c);
+      }
+    } catch (err) {
+      toast("Failed to save — check connection", "error");
+    }
+  };
+
+  const deleteCreator = async (id) => {
+    setCreators(prev => prev.filter(x => x.id !== id));
+    setModal(null);
+    try {
+      await deleteCreatorApi(id);
+    } catch {
+      toast("Failed to delete — check connection", "error");
+    }
+  };
+
+  const changeStage = async (id, status) => {
+    const updated = creators.find(x => x.id === id);
+    if (!updated) return;
+    const withLog = { ...updated, status, log: [{ text: `Moved to ${status}`, date: now() }, ...(updated.log || [])] };
+    setCreators(prev => prev.map(x => x.id === id ? withLog : x));
     toast(`Moved to ${status}`, "info");
+    try {
+      await updateCreator(withLog);
+    } catch {
+      toast("Failed to update — check connection", "error");
+    }
   };
 
   const handleExport = () => {
@@ -892,13 +949,6 @@ export default function App() {
 
   const counts = STAGES.reduce((a,s)=>({...a,[s]:creators.filter(c=>c.status===s).length}),{});
   const csvBtnDisabled = creators.length === 0;
-
-  if (!loaded) return (
-    <div style={{ background: T.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <InjectedStyles />
-      <div style={{ color: T.textFaint, fontSize:14, ...mono, animation:"pulseOverdue 1.5s ease infinite" }}>LOADING…</div>
-    </div>
-  );
 
   return (
     <div style={{ background: T.bg, minHeight:"100vh", ...sans, color: T.text, paddingBottom:"env(safe-area-inset-bottom, 0px)" }}>
@@ -941,6 +991,12 @@ export default function App() {
             animation:"pulseGlow 2.5s ease infinite",
           })}>
             + {mob ? "ADD" : "ADD CREATOR"}
+          </button>
+          <button onClick={handleSignOut} title="Sign out" style={ghostBtn({
+            background: T.surface, border:`1px solid ${T.border}`,
+            padding: mob?"10px 12px":"9px 14px", fontSize:14, borderRadius:10,
+          })}>
+            ⏻
           </button>
         </div>
       </div>
