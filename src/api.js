@@ -1,7 +1,7 @@
 // ─── API Client ─────────────────────────────────────────────────────────────
 // Handles auth + CRUD with camelCase↔snake_case and enum normalization
 
-const API = "";
+const API = "https://creator-app-bbi.pages.dev";
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
