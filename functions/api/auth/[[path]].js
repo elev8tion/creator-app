@@ -27,7 +27,8 @@ function transformSetCookie(cookie) {
       return !l.startsWith("domain=") && !l.startsWith("secure") && !l.startsWith("samesite=");
     });
 
-  attrs.push("SameSite=Lax");
+  attrs.push("SameSite=None");
+  attrs.push("Secure");
   return [nameValue, ...attrs].join("; ");
 }
 
@@ -58,7 +59,7 @@ async function handleSignOut(request, env) {
 
   // Always clear cookies
   for (const name of ["better-auth.session_token", "better-auth.session_data"]) {
-    headers.append("Set-Cookie", `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`);
+    headers.append("Set-Cookie", `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure`);
   }
 
   return new Response(JSON.stringify({ success: true }), { status: 200, headers });
