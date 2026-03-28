@@ -562,7 +562,7 @@ function Modal({ creator, onClose, onSave, onDelete, mob, toast }) {
     if (creator && creator.status !== form.status) {
       finalLog = [{text:`Moved to ${form.status}`, date:now()}, ...log];
     }
-    onSave({...form, log: finalLog, id: form.id||Date.now()});
+    onSave({...form, log: finalLog, id: form.id != null ? form.id : Date.now()});
     toast(isNew ? "Creator added" : "Changes saved", "success");
   };
 
@@ -896,7 +896,11 @@ export default function App() {
         await updateCreator(c);
       }
     } catch (err) {
-      toast("Failed to save — check connection", "error");
+      if (isNew) {
+        // Rollback — remove the ghost creator that failed to persist
+        setCreators(prev => prev.filter(x => x.id !== c.id));
+      }
+      toast("Failed to save — " + err.message, "error");
     }
   };
 

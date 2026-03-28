@@ -27,6 +27,11 @@ export async function signIn(email, password) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || data.error || "Sign in failed");
+
+  // Verify the cookie was actually stored (cross-origin can silently block it)
+  const session = await getSession();
+  if (!session) throw new Error("Session cookie was blocked by your browser. Try disabling third-party cookie blocking, or use the app directly at https://creator-app-bbi.pages.dev");
+
   return data;
 }
 
@@ -39,6 +44,11 @@ export async function signUp(email, password, name) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || data.error || "Sign up failed");
+
+  // Verify cookie stored
+  const session = await getSession();
+  if (!session) throw new Error("Session cookie was blocked by your browser. Try disabling third-party cookie blocking, or use the app directly at https://creator-app-bbi.pages.dev");
+
   return data;
 }
 
@@ -48,7 +58,7 @@ export async function signOut() {
 
 // ─── Data Mapping ───────────────────────────────────────────────────────────
 // Frontend uses camelCase + Title Case enums
-// Database uses snake_case + lowercase enums
+// Database may return either case depending on NCB
 
 const STATUS_TO_DB = {
   "Discovered": "discovered",
@@ -59,12 +69,21 @@ const STATUS_TO_DB = {
   "Declined": "declined",
 };
 
-const STATUS_FROM_DB = Object.fromEntries(
-  Object.entries(STATUS_TO_DB).map(([k, v]) => [v, k])
-);
+const STATUS_FROM_DB = {
+  "discovered": "Discovered", "Discovered": "Discovered",
+  "contacted": "Contacted",   "Contacted": "Contacted",
+  "responded": "Responded",   "Responded": "Responded",
+  "in talks": "In Talks",     "In Talks": "In Talks",
+  "onboarded": "Onboarded",   "Onboarded": "Onboarded",
+  "declined": "Declined",     "Declined": "Declined",
+};
 
 const PRIORITY_TO_DB = { "High": "high", "Medium": "medium", "Low": "low" };
-const PRIORITY_FROM_DB = { "high": "High", "medium": "Medium", "low": "Low" };
+const PRIORITY_FROM_DB = {
+  "high": "High", "High": "High",
+  "medium": "Medium", "Medium": "Medium",
+  "low": "Low", "Low": "Low",
+};
 
 function toDb(creator) {
   return {
@@ -128,10 +147,12 @@ export async function createCreator(creator) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("Failed to create creator");
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to create: ${err}`);
+  }
   const data = await res.json();
-  // Return the creator with the DB-assigned id
-  return { ...creator, id: data.id || creator.id };
+  return { ...creator, id: data.id ?? creator.id };
 }
 
 export async function updateCreator(creator) {
@@ -142,7 +163,10 @@ export async function updateCreator(creator) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("Failed to update creator");
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to update: ${err}`);
+  }
   return creator;
 }
 
@@ -151,5 +175,8 @@ export async function deleteCreatorApi(id) {
     method: "DELETE",
     credentials: "include",
   });
-  if (!res.ok) throw new Error("Failed to delete creator");
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to delete: ${err}`);
+  }
 }
