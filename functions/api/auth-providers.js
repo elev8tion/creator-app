@@ -4,7 +4,12 @@ export async function onRequestGet(context) {
   const url = `${env.NCB_AUTH_API_URL}/providers?Instance=${env.NCB_INSTANCE}`;
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Database-Instance": env.NCB_INSTANCE,
+      },
+    });
     const data = await res.json();
     return new Response(JSON.stringify(data), {
       headers: { "Content-Type": "application/json" },

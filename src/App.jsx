@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Auth from "./Auth";
+import ChatWidget from "./ChatWidget";
 import { getSession, signOut, fetchCreators, createCreator, updateCreator, deleteCreatorApi } from "./api";
 
 // ─── Responsive Hook ────────────────────────────────────────────────────────
@@ -1133,6 +1134,8 @@ export default function App() {
         <Modal creator={modal==="add"?null:modal} onClose={()=>setModal(null)}
           onSave={saveCreator} onDelete={deleteCreator} mob={mob} toast={toast} />
       )}
+
+      <ChatWidget theme={T} />
     </div>
   );
 }
